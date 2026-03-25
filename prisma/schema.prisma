@@ -1,0 +1,384 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////
+// UPI Services                                                  ////////////////////////
+/////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////
+model UpiPatient {
+  upi_id      String   @id @default(cuid())
+  aadhaar_no  String   @unique
+  
+  firstName String //added 18-03-2026
+  lastName  String //added 18-03-2026
+
+  phone       String?
+  gender      String?
+  dob         DateTime?
+  created_at  DateTime @default(now())
+}
+/////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////
+// CRS Services                                                  ////////////////////////
+/////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////
+/////////////////////////////
+// SYSTEM ENUMS (ONLY THESE)
+/////////////////////////////
+
+enum AppointmentStatus {
+  HOLD // temporarily reserved
+  BOOKED // confirmed payment / confirmed appointment
+  CANCELLED // cancelled by user/admin
+  COMPLETED // patient attended and service done
+  NO_SHOW // patient did not attend
+  EXPIRED // hold expired before booking
+  BLOCKED // admin blocked the slot
+}
+
+/////////////////////////////
+// VENDOR (HQ LEVEL)
+/////////////////////////////
+
+model Vendor {
+  id       String  @id @default(uuid())
+  name     String
+  isActive Boolean @default(true)
+
+  centers Center[]
+  admins  VendorAdmin[]
+
+  createdAt DateTime @default(now())
+}
+
+model VendorAdmin {
+  id       String @id @default(uuid())
+  vendorId String
+  name     String
+  email    String @unique
+
+  vendor Vendor @relation(fields: [vendorId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+/////////////////////////////
+// CENTER (BRANCH)
+/////////////////////////////
+
+model Center {
+  id        String  @id @default(uuid())
+  vendorId  String
+  name      String
+  address   String
+  latitude  Float
+  longitude Float
+  timezone  String
+  rating    Float   @default(0)
+  isActive  Boolean @default(true)
+  isDeleted Boolean @default(false)
+
+  vendor       Vendor           @relation(fields: [vendorId], references: [id])
+  branchAdmin  BranchAdmin?
+  modalities   CenterModality[]
+  machines     Machine[]
+  operators    Operator[]
+  appointments Appointment[]
+
+  createdAt DateTime @default(now())
+}
+
+/////////////////////////////
+// BRANCH ADMIN (ONE PER CENTER)
+/////////////////////////////
+
+model BranchAdmin {
+  id       String @id @default(uuid())
+  centerId String @unique // enforces 1–1
+  name     String
+  email    String @unique
+
+  center Center @relation(fields: [centerId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+/////////////////////////////
+// MODALITY (GLOBAL, DYNAMIC)
+/////////////////////////////
+
+model Modality {
+  id       String  @id @default(uuid())
+  code     String  @unique // MRI, CT, PET, etc.
+  name     String
+  category String?
+  isActive Boolean @default(true)
+
+  centers      CenterModality[]
+  machines     Machine[]
+  operators    Operator[]
+  appointments Appointment[]
+  testConfigs  ModalityTestConfig[]
+
+  createdAt DateTime @default(now())
+}
+
+/////////////////////////////
+// CENTER ↔ MODALITY
+/////////////////////////////
+
+model CenterModality {
+  id         String  @id @default(uuid())
+  centerId   String
+  modalityId String
+  isActive   Boolean @default(true)
+
+  center   Center   @relation(fields: [centerId], references: [id])
+  modality Modality @relation(fields: [modalityId], references: [id])
+
+  @@unique([centerId, modalityId])
+}
+
+//////////////////////////////////////////////////
+// MACHINE
+//////////////////////////////////////////////////
+
+model Machine {
+  id         String  @id @default(uuid())
+  centerId   String
+  modalityId String
+  name       String
+  isActive   Boolean @default(true)
+  isDeleted  Boolean @default(false)
+
+  center            Center             @relation(fields: [centerId], references: [id])
+  modality          Modality           @relation(fields: [modalityId], references: [id])
+  appointments      Appointment[]
+  availabilityRules AvailabilityRule[]
+
+  @@index([centerId, modalityId])
+}
+
+//////////////////////////////////////////////////
+// OPERATOR
+//////////////////////////////////////////////////
+
+model Operator {
+  id         String  @id @default(uuid())
+  centerId   String
+  modalityId String
+  name       String
+  isActive   Boolean @default(true)
+  isDeleted  Boolean @default(false)
+
+  center       Center          @relation(fields: [centerId], references: [id])
+  modality     Modality        @relation(fields: [modalityId], references: [id])
+  leaves       OperatorLeave[]
+  appointments Appointment[]
+
+  @@index([centerId, modalityId])
+}
+
+//////////////////////////////////////////////////
+// OPERATOR LEAVE (RANGE BASED)
+//////////////////////////////////////////////////
+
+model OperatorLeave {
+  id            String   @id @default(uuid())
+  operatorId    String
+  startDateTime DateTime
+  endDateTime   DateTime
+
+  operator Operator @relation(fields: [operatorId], references: [id])
+
+  @@index([operatorId, startDateTime, endDateTime])
+}
+
+//////////////////////////////////////////////////
+// AVAILABILITY RULE
+//////////////////////////////////////////////////
+
+model AvailabilityRule {
+  id          String @id @default(uuid())
+  machineId   String
+  dayOfWeek   Int      // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  startTime   String
+  endTime     String
+  slotMinutes Int
+
+  machine Machine @relation(fields: [machineId], references: [id])
+
+  @@unique([machineId, dayOfWeek])
+}
+
+//////////////////////////////////////////////////
+// TEST CONFIG (DURATION + PRICE)
+//////////////////////////////////////////////////
+
+model ModalityTestConfig {
+  id              String        @id @default(uuid())
+  modalityId      String
+  testKeyword     String // "BRAIN", "SPINE", etc.
+  durationMinutes Int
+  price           Int
+  isDeleted       Boolean       @default(false)
+  appointments    Appointment[]
+
+  modality Modality @relation(fields: [modalityId], references: [id])
+
+  @@unique([modalityId, testKeyword])
+}
+
+//////////////////////////////////////////////////
+// USERs (Added on 9mar26)
+//////////////////////////////////////////////////
+
+model UserAccount {
+  id        String  @id @default(uuid())
+  phone     String  @unique
+  email     String?
+  name      String?
+
+  primaryFamilyId String?
+
+  families  Family[]  @relation("FamilyOwner")
+  patients  Patient[] @relation("PatientCreatedBy")
+
+  appointments Appointment[]
+
+  createdAt DateTime @default(now())
+}
+
+model Family {
+  id        String @id @default(uuid())
+  name      String?
+  createdBy String
+
+  owner UserAccount @relation("FamilyOwner", fields: [createdBy], references: [id])
+
+  patients Patient[]
+  appointments Appointment[]
+
+  createdAt DateTime @default(now())
+}
+
+model Patient {
+  id        String  @id @default(uuid())
+  familyId  String
+
+  
+  firstName String  // (Added on 18mar26)
+  lastName  String  // (Added on 18mar26)
+  upiId     String? // (Added on 18mar26)
+
+  relation  String
+  gender    String
+  dateOfBirth DateTime?
+
+  phone     String?
+
+  createdByUserId String?
+
+  family Family @relation(fields: [familyId], references: [id])
+
+  createdBy UserAccount? @relation("PatientCreatedBy", fields: [createdByUserId], references: [id])
+
+  appointments Appointment[]
+
+  createdAt DateTime @default(now())
+
+  @@index([familyId, relation])
+}
+//////////////////////////////////////////////////
+// APPOINTMENT
+//////////////////////////////////////////////////
+
+model Appointment {
+  id              String            @id @default(uuid())
+  centerId        String
+  modalityId      String
+  machineId       String
+  operatorId      String
+  testConfigId    String
+
+  // patientId       String?   // ← ADD THIS (string for now for review page)
+
+  appointmentDate DateTime          @db.Date
+  startTime       DateTime
+  endTime         DateTime
+  status          AppointmentStatus
+  holdExpiresAt   DateTime?
+  isDeleted       Boolean           @default(false)
+
+  center     Center             @relation(fields: [centerId], references: [id])
+  modality   Modality           @relation(fields: [modalityId], references: [id])
+  machine    Machine            @relation(fields: [machineId], references: [id])
+  operator   Operator           @relation(fields: [operatorId], references: [id])
+  testConfig ModalityTestConfig @relation(fields: [testConfigId], references: [id])
+
+  patientId String //(Added on 9mar26)
+  userId    String //(Added on 9mar26)
+  familyId  String //(Added on 9mar26)
+
+  patient Patient @relation(fields: [patientId], references: [id])   //(Added on 9mar26)
+  user    UserAccount @relation(fields: [userId], references: [id])  //(Added on 9mar26)
+  family  Family @relation(fields: [familyId], references: [id])     //(Added on 9mar26)
+
+  payments Payment[] //(Added on 6mar26)
+ 
+  createdAt DateTime @default(now())
+
+  @@index([centerId, modalityId, appointmentDate])
+  @@index([machineId, startTime])
+  @@index([operatorId, startTime])
+  @@index([holdExpiresAt])
+
+  @@index([userId])     // (Added on 9mar26)
+  @@index([patientId])  // (Added on 9mar26)
+  @@index([familyId])   // (Added on 9mar26)
+
+}
+
+//////////////////////////////////////////////////
+// PAYMENT (Added on 6mar26)
+//////////////////////////////////////////////////
+
+model Payment {
+  id String @id @default(uuid())
+
+  appointmentId String
+  razorpayOrderId String
+  razorpayPaymentId String? @unique 
+  razorpaySignature String?
+
+  amount Int
+  currency String @default("INR")
+
+  status String
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+
+// npx prisma studio --config prisma.config.ts 
+// npx prisma migrate dev --name init
+// npx prisma generate
+
+/*
+Modifications on 25-03-2026:
+updated as:
+razorpayPaymentId String? @unique
+-
+npx prisma migrate reset
+npx prisma generate
+psql "postgresql://postgres:pgpassword@localhost:5444/crs-db"   -f sql/seed.sql
+*/
