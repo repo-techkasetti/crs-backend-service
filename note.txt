@@ -1,0 +1,11 @@
+DATABASE_URL="postgresql://postgres:pgpassword@localhost:5444/crs-db?schema=public"
+
+PORT=3000
+
+RAZORPAY_KEY=rzp_test_SN18Mc01KDKfJx
+RAZORPAY_SECRET=U2ubQaCJwlJ3VApUI0nTUvwp
+
+# For development, you can use
+# IP_ADDRESS=192.168.1.68
+IP_ADDRESS=172.16.16.105
+# IP_ADDRESS=localhost
