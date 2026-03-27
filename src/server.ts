@@ -21,6 +21,7 @@ import { verifyPayment } from "./routes/payments/verifyPayment"
 import { getPatientByUpi } from "./controllers/getPatientByUpi";
 import { getPatientByAadhar } from "./controllers/getPatientByAadhar";
 import { registerPatient } from "./controllers/registerPatient";
+import { getAppointment } from "./routes/appointments/getAppointment";
 
 
 const app = express();
@@ -57,6 +58,7 @@ app.get("/api/patients/:upiId", authMiddleware, getPatientByUpiInMobile)
 // PAYMENT
 app.post("/api/bookings/create", createBooking)
 app.post("/api/payment/verify", verifyPayment)
+app.get("/api/appointments/:appointmentId", getAppointment)
 
 
 
