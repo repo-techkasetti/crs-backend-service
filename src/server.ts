@@ -17,6 +17,7 @@ import { getPatientByUpiInMobile } from "./routes/patients/getPatientByUpiInMobi
 //6
 import { createBooking } from "./controllers/bookingController"
 import { verifyPayment } from "./routes/payments/verifyPayment"
+import { getPaymentStatus } from "./routes/payments/getPaymentStatus"
 //7
 import { getPatientByUpi } from "./controllers/getPatientByUpi";
 import { getPatientByAadhar } from "./controllers/getPatientByAadhar";
@@ -58,6 +59,7 @@ app.get("/api/patients/:upiId", authMiddleware, getPatientByUpiInMobile)
 // PAYMENT
 app.post("/api/bookings/create", createBooking)
 app.post("/api/payment/verify", verifyPayment)
+app.get("/api/payment/:paymentId", getPaymentStatus)
 app.get("/api/appointments/:appointmentId", getAppointment)
 
 
