@@ -23,12 +23,30 @@ import { getPatientByUpi } from "./controllers/getPatientByUpi";
 import { getPatientByAadhar } from "./controllers/getPatientByAadhar";
 import { registerPatient } from "./controllers/registerPatient";
 import { getAppointment } from "./routes/appointments/getAppointment";
+import adminRouter from "./routes/admin";
+import { getOutboxStats } from "./services/outboxRelay";
+import cartRouter from "./routes/cart";
+import subscriptionRouter from "./routes/subscriptions";
+import b2cReconciliationRouter from "./routes/b2cReconciliation";
 
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+app.get("/health", (_req, res) => {
+  res.json({ status: "ok" });
+});
+
+app.get("/outbox/stats", async (_req, res) => {
+  try {
+    res.json(await getOutboxStats());
+  } catch (error) {
+    console.error("Outbox stats error:", error);
+    res.status(500).json({ message: "Failed to fetch outbox stats" });
+  }
+});
 
 // Search Service
 app.post("/api/search", async (req, res) => {
@@ -61,6 +79,9 @@ app.post("/api/bookings/create", createBooking)
 app.post("/api/payment/verify", verifyPayment)
 app.get("/api/payment/:paymentId", getPaymentStatus)
 app.get("/api/appointments/:appointmentId", getAppointment)
+app.use("/api/cart", cartRouter)
+app.use("/api/subscriptions", subscriptionRouter)
+app.use("/api/b2c/reconciliation", b2cReconciliationRouter)
 
 
 
@@ -70,6 +91,7 @@ app.get("/api/patient/:upi_id", getPatientByUpi);
 app.get("/api/patient/aadhaar/:aadhaar", getPatientByAadhar);
 // Register patient
 app.post("/api/patient/register", registerPatient);
+app.use("/api/admin", adminRouter);
 
 const PORT = process.env.PORT || 3000;
 

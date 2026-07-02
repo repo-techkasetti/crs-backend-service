@@ -18,6 +18,11 @@ export const getAppointment = async (req: Request, res: Response) => {
       where: { id: appointmentId },
       select: {
         centerId: true,
+        tenantId: true,
+        hospitalId: true,
+        serviceMappingId: true,
+        odooProductId: true,
+        caseId: true,
         patientId: true,
         modalityId: true,
         testConfigId: true,
@@ -79,7 +84,12 @@ export const getAppointment = async (req: Request, res: Response) => {
       .join(" ")
 
     return res.json({
-      tenant_id: appointment.centerId,
+      case_id: appointment.caseId,
+      tenant_id: appointment.tenantId,
+      hospital_id: appointment.hospitalId,
+      center_id: appointment.centerId,
+      service_mapping_id: appointment.serviceMappingId,
+      odoo_product_id: appointment.odooProductId,
       payment_order_id: payment?.razorpayOrderId ?? null,
       unification_id: patient.upiId ?? null,
       patient_id: appointment.patientId,

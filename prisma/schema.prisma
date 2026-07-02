@@ -43,6 +43,59 @@ enum AppointmentStatus {
   BLOCKED // admin blocked the slot
 }
 
+enum CartStatus {
+  ACTIVE
+  CHECKED_OUT
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  FAILED
+  EXPIRED
+}
+
+enum OrderItemStatus {
+  HOLD
+  BOOKED
+  FAILED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PENDING
+  CANCELLED
+  EXPIRED
+}
+
+enum ReconciliationPaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum ReconciliationOutboxStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum BahmniOrderStatus {
+  NOT_STARTED
+  PENDING
+  CREATED
+  FAILED
+}
+
+enum ReconciliationResolutionStatus {
+  OPEN
+  RETRY_REQUIRED
+  MANUAL_REVIEW_REQUIRED
+  REFUND_REQUIRED
+  RESOLVED
+}
+
 /////////////////////////////
 // VENDOR (HQ LEVEL)
 /////////////////////////////
@@ -247,6 +300,7 @@ model UserAccount {
   name      String?
 
   primaryFamilyId String?
+  kbAccountId String?
 
   families  Family[]  @relation("FamilyOwner")
   patients  Patient[] @relation("PatientCreatedBy")
@@ -307,6 +361,11 @@ model Appointment {
   machineId       String
   operatorId      String
   testConfigId    String
+  caseId          String?           @unique
+  tenantId        String?
+  hospitalId      String?
+  serviceMappingId String?
+  odooProductId   String?
 
   // patientId       String?   // ← ADD THIS (string for now for review page)
 
@@ -343,6 +402,8 @@ model Appointment {
   @@index([userId])     // (Added on 9mar26)
   @@index([patientId])  // (Added on 9mar26)
   @@index([familyId])   // (Added on 9mar26)
+  @@index([tenantId])
+  @@index([serviceMappingId])
 
 }
 
@@ -353,7 +414,9 @@ model Appointment {
 model Payment {
   id String @id @default(uuid())
 
-  appointmentId String
+  appointmentId String?
+  orderId String?
+  caseId String?
   razorpayOrderId String
   razorpayPaymentId String? @unique 
   razorpaySignature String?
@@ -363,9 +426,190 @@ model Payment {
 
   status String
 
-  appointment Appointment @relation(fields: [appointmentId], references: [id])
+  appointment Appointment? @relation(fields: [appointmentId], references: [id])
 
   createdAt DateTime @default(now())
+
+  @@index([caseId])
+  @@index([orderId])
+}
+
+model Cart {
+  id        String     @id @default(uuid())
+  userId    String
+  status    CartStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([userId, status])
+}
+
+model CartItem {
+  id              String   @id @default(uuid())
+  cartId          String
+  patientId       String?
+  centerId        String?
+  modalityId      String?
+  testConfigId    String?
+  appointmentDate DateTime? @db.Date
+  slotTime        String?
+  unitPrice       Int?
+  currency        String   @default("INR")
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([cartId])
+  @@index([patientId])
+}
+
+model Order {
+  id                String      @id @default(uuid())
+  userId            String
+  cartId            String?
+  status            OrderStatus @default(PENDING_PAYMENT)
+  totalAmount       Int
+  currency          String      @default("INR")
+  razorpayOrderId   String?     @unique
+  razorpayPaymentId String?     @unique
+  razorpaySignature String?
+  holdExpiresAt     DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([userId, status])
+}
+
+model OrderItem {
+  id              String          @id @default(uuid())
+  orderId         String
+  cartItemId      String?
+  patientId       String?
+  centerId        String
+  modalityId      String?
+  testConfigId    String?
+  appointmentDate DateTime?       @db.Date
+  slotTime        String?
+  amount          Int
+  currency        String          @default("INR")
+  status          OrderItemStatus @default(HOLD)
+  appointmentId   String?         @unique
+  caseId          String?
+  tenantId        String?
+  hospitalId      String?
+  serviceMappingId String?
+  odooProductId   String?
+  coveredBySubscription Boolean @default(false)
+  entitlementId   String?
+  createdAt       DateTime        @default(now())
+
+  @@index([orderId, status])
+  @@index([caseId])
+}
+
+model SubscriptionPlan {
+  id           String   @id @default(uuid())
+  name         String   @unique
+  description  String?
+  monthlyPrice Int
+  kbPlanName   String   @unique
+  isActive     Boolean  @default(true)
+  odooProductId Int?
+  createdAt    DateTime @default(now())
+}
+
+model PlanItem {
+  id          String @id @default(uuid())
+  planId      String
+  serviceCode String
+  serviceName String
+  quantity    Int
+
+  @@unique([planId, serviceCode])
+}
+
+model UserSubscription {
+  id                String             @id @default(uuid())
+  userId            String
+  planId            String
+  kbSubscriptionId  String?
+  kbBundleId        String?
+  status            SubscriptionStatus @default(ACTIVE)
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  startedAt         DateTime           @default(now())
+  renewsAt          DateTime?
+  cancelledAt       DateTime?
+  createdAt         DateTime           @default(now())
+
+  @@index([userId, status])
+}
+
+model Entitlement {
+  id             String   @id @default(uuid())
+  userId         String
+  subscriptionId String
+  serviceCode    String
+  serviceName    String
+  remaining      Int
+  total          Int
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@unique([subscriptionId, serviceCode])
+  @@index([userId])
+}
+
+model OutboxEvent {
+  id            String    @id @default(uuid())
+  topic         String
+  eventType     String    @default("BOOKING_CONFIRMED")
+  aggregateType String
+  aggregateId   String
+  caseId        String?
+  payload       Json
+  status        String    @default("PENDING")
+  attempts      Int       @default(0)
+  retryCount    Int       @default(0)
+  lastError     String?
+  publishedAt   DateTime?
+  processedAt   DateTime?
+  lastAttemptAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([topic, status, createdAt])
+  @@index([caseId])
+}
+
+model B2COrderReconciliation {
+  id                 String                         @id @default(uuid())
+  caseId             String                         @unique
+  tenantId           String
+  hospitalId         String
+  appointmentId      String
+  paymentOrderId     String?
+  paymentStatus      ReconciliationPaymentStatus
+  outboxEventId      String?
+  outboxStatus       ReconciliationOutboxStatus
+  bahmniPatientUuid  String?
+  bahmniOrderUuid    String?
+  bahmniVisitUuid    String?
+  bahmniOrderStatus  BahmniOrderStatus
+  retryCount         Int                            @default(0)
+  lastErrorCode      String?
+  lastErrorMessage   String?
+  resolutionStatus   ReconciliationResolutionStatus
+  resolvedBy         String?
+  resolvedAt         DateTime?
+  createdAt          DateTime                       @default(now())
+  updatedAt          DateTime                       @updatedAt
+
+  @@index([tenantId, resolutionStatus])
+  @@index([hospitalId])
+  @@index([appointmentId])
+  @@index([outboxStatus])
+  @@index([bahmniOrderStatus])
+  @@index([createdAt])
 }
 
 

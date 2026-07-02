@@ -4,7 +4,11 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx src/server.ts"
+    "dev": "tsx src/server.ts",
+    "relay": "tsx src/outboxRelayWorker.ts",
+    "test:relay": "tsx --test src/tests/outboxRelay.test.ts",
+    "test:reconciliation": "tsx --test src/tests/b2cReconciliation.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
@@ -25,6 +29,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "kafkajs": "^2.2.4",
     "pg": "^8.20.0",
     "razorpay": "^2.9.6"
   }

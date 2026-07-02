@@ -1,0 +1,11 @@
+.git
+.env
+node_modules
+generated/.cache
+generated/*.log
+Dockerfile
+docker-compose.yml
+note.txt
+**/node_modules
+**/.bin
+**/*.tsbuildinfo
