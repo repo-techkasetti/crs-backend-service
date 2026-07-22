@@ -8,16 +8,30 @@ import {
   markReconciliationRefundRequired,
   resolveReconciliation
 } from "../services/b2cReconciliation"
+import { tenantHeaderGuard } from "../middleware/tenantContext"
 
 const router = express.Router()
 
+// Every reconciliation route requires a verified tenant. Missing/empty X-Tenant-Id -> 401.
+router.use(tenantHeaderGuard)
+
+// Actor identity comes from the token, surfaced by Oathkeeper as the verified X-Subject
+// header -- never from a self-asserted body/header the caller controls.
 function actorId(req: Request) {
-  return String(req.headers["x-actor-user-id"] || req.body?.actor_id || "scansure-admin")
+  return String(req.headers["x-subject"] || "scansure-sidecar")
+}
+
+// The verified tenant, guaranteed present/non-empty by tenantHeaderGuard.
+function verifiedTenant(req: Request): string {
+  return req.tenantId as string
 }
 
 function handleError(res: Response, error: unknown) {
   const message = error instanceof Error ? error.message : "Request failed"
   const lower = message.toLowerCase()
+  if (lower.includes("forbidden")) {
+    return res.status(403).json({ message })
+  }
   if (lower.includes("not found") || lower.includes("case lookup failed")) {
     return res.status(404).json({ message })
   }
@@ -30,8 +44,9 @@ function handleError(res: Response, error: unknown) {
 
 router.get("/", async (req: Request, res: Response) => {
   try {
+    // Tenant scope comes from the verified header only, never a caller-supplied query.
     const rows = await listReconciliations({
-      tenantId: req.query.tenant_id ? String(req.query.tenant_id) : undefined,
+      tenantId: verifiedTenant(req),
       resolutionStatus: req.query.resolution_status ? String(req.query.resolution_status) : undefined,
       limit: req.query.limit ? Number(req.query.limit) : undefined
     })
@@ -44,7 +59,7 @@ router.get("/", async (req: Request, res: Response) => {
 router.get("/:case_id", async (req: Request, res: Response) => {
   try {
     const caseId = String(req.params.case_id)
-    const row = await getReconciliationDetail(caseId)
+    const row = await getReconciliationDetail(caseId, verifiedTenant(req))
     if (!row) return res.status(404).json({ message: "B2C reconciliation row not found for case_id" })
     return res.json(row)
   } catch (error) {
@@ -59,7 +74,7 @@ router.post("/:case_id/bahmni-order-created", async (req: Request, res: Response
       bahmni_order_uuid: req.body?.bahmni_order_uuid,
       bahmni_visit_uuid: req.body?.bahmni_visit_uuid,
       actor_id: actorId(req)
-    })
+    }, verifiedTenant(req))
     return res.json(row)
   } catch (error) {
     return handleError(res, error)
@@ -72,7 +87,7 @@ router.post("/:case_id/bahmni-order-failed", async (req: Request, res: Response)
       error_code: req.body?.error_code,
       error_message: req.body?.error_message,
       actor_id: actorId(req)
-    })
+    }, verifiedTenant(req))
     return res.json(row)
   } catch (error) {
     return handleError(res, error)

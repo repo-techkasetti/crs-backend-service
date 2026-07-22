@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma"
 import { getCase, transitionCase, updateCase, writeCaseEvent } from "./onboardingClient"
+import { assertTenantMatches } from "../middleware/tenantContext"
 
 export const MANUAL_REVIEW_RETRY_THRESHOLD = 3
 
@@ -95,12 +96,15 @@ export async function markBahmniOrderCreated(caseId: string, payload: {
   bahmni_order_uuid?: string | null
   bahmni_visit_uuid?: string | null
   actor_id?: string | null
-}) {
+}, expectedTenantId?: string) {
   requireBahmniCreatedPayload(payload)
   const caseRow = await getCase(caseId)
   const reconciliation = await prisma.b2COrderReconciliation.findUnique({ where: { caseId } })
   if (!reconciliation) {
     throw new Error("B2C reconciliation row not found for case_id")
+  }
+  if (expectedTenantId !== undefined) {
+    assertTenantMatches(reconciliation.tenantId, expectedTenantId)
   }
 
   await updateCase(caseId, {
@@ -145,11 +149,14 @@ export async function markBahmniOrderFailed(caseId: string, payload: {
   error_code?: string | null
   error_message?: string | null
   actor_id?: string | null
-}) {
+}, expectedTenantId?: string) {
   const caseRow = await getCase(caseId)
   const reconciliation = await prisma.b2COrderReconciliation.findUnique({ where: { caseId } })
   if (!reconciliation) {
     throw new Error("B2C reconciliation row not found for case_id")
+  }
+  if (expectedTenantId !== undefined) {
+    assertTenantMatches(reconciliation.tenantId, expectedTenantId)
   }
 
   const retryCount = reconciliation.retryCount + 1
@@ -293,9 +300,12 @@ export async function listReconciliations(filters: {
   return Promise.all(refreshed.filter(Boolean).map((row) => decorateRow(row!)))
 }
 
-export async function getReconciliationDetail(caseId: string) {
+export async function getReconciliationDetail(caseId: string, expectedTenantId?: string) {
   await refreshReconciliationOutboxStatus(caseId)
   const row = await prisma.b2COrderReconciliation.findUnique({ where: { caseId } })
   if (!row) return null
+  if (expectedTenantId !== undefined) {
+    assertTenantMatches(row.tenantId, expectedTenantId)
+  }
   return decorateRow(row)
 }
